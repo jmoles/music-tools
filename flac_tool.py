@@ -1,23 +1,28 @@
 import argparse
 import errno
 import os
+from shutil import copyfile
 import subprocess
 
 FLAC_EXT = ".flac"
 ART_EXT = ".jpg"
-OGG_EXT = ".ogg"
+DEF_OUT_EXT = ".ogg"
 
 OGG_CMD = 'oggenc'
 
 parser = argparse.ArgumentParser(description="Utility to mirror music directory.")
 parser.add_argument('flac', help='Base path to flac files.')
-parser.add_argument('ogg', help='Base path to ogg files.')
+parser.add_argument('out', help='Base path to out files.')
+parser.add_argument('outExt', help='Output extension.', default=DEF_OUT_EXT)
+parser.add_argument('--copy-art', help='Copy art rather than symlink.', action='store_true')
 
 args = parser.parse_args()
 
+out_ext = "." + args.outExt.lstrip(".")
+
 # Clean up the folder paths.
 flac_dir = os.path.abspath(args.flac)
-ogg_dir = os.path.abspath(args.ogg)
+ogg_dir = os.path.abspath(args.out)
 
 # Make sure both of these exist and are directories. Raise exception if not.
 if not os.path.isdir(flac_dir):
@@ -36,16 +41,16 @@ for root, dirs, files in os.walk(flac_dir):
             os.makedirs(ogg_out_dir)
 
         # Get any existing ogg files (we will skip these later).
-        oggs = [f for f in os.listdir(ogg_out_dir) if f.endswith(OGG_EXT)]
+        oggs = [f for f in os.listdir(ogg_out_dir) if f.endswith(out_ext)]
 
         # Go file by file and see if an ogg already exists. If not,
         # do oggenc.
         for flac_curr in flacs:
             flac_curr_fname, _ = os.path.splitext(flac_curr)
-            ogg_curr = os.path.join(ogg_out_dir, flac_curr_fname + OGG_EXT)
+            ogg_curr = os.path.join(ogg_out_dir, flac_curr_fname + out_ext)
             if not os.path.isfile(ogg_curr):
                 subprocess.check_call(
-                    ('oggenc', '-o', ogg_curr, flac_curr),
+                    ('ffmpeg', '-i', flac_curr, ogg_curr),
                     cwd=root)
 
         # Check if folder art has been symlinked.
@@ -55,4 +60,8 @@ for root, dirs, files in os.walk(flac_dir):
             sym_link_path = os.path.relpath(art_full_path, ogg_out_dir)
 
             if not os.path.exists(out_art_path):
-                os.symlink(sym_link_path, out_art_path)
+                if args.copy_art:
+                    copyfile(sym_link_path, out_art_path)
+                else:
+                    os.symlink(sym_link_path, out_art_path)
+
